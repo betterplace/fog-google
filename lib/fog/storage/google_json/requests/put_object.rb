@@ -23,7 +23,6 @@ module Fog
           options["content_type"] ||= detected_type
           options["name"] = object_name
 
-          byebug
           object_config = ::Google::Apis::StorageV1::Object.new(options.symbolize_keys)
           @storage_json.insert_object(bucket_name,
                                       object_config,
