@@ -59,15 +59,14 @@ module Fog
           if options != {}
             Fog::Logger.deprecation("options param is deprecated, use acl= instead [light_black](#{caller.first})[/]")
           end
-          options["contentType"] = content_type if content_type
-          options["predefinedAcl"] ||= predefined_acl if predefined_acl # predefinedAcl may need to be in parameters
+          options["content_type"] = content_type if content_type
           options["acl"] ||= acl if acl # Not sure if you can provide both acl and predefinedAcl
-          options["cacheControl"] = cache_control if cache_control
-          options["contentDisposition"] = content_disposition if content_disposition
-          options["contentEncoding"] = content_encoding if content_encoding
-          options["metadata"] = metadata
+          options["cache_control"] = cache_control if cache_control
+          options["content_disposition"] = content_disposition if content_disposition
+          options["content_encoding"] = content_encoding if content_encoding
+          options["metadata"] = metadata if metadata
 
-          service.put_object(directory.key, key, body, options)
+          service.put_object(directory.key, key, body, predefined_acl, options)
           self.content_length = Fog::Storage.get_body_size(body)
           self.content_type ||= Fog::Storage.get_content_type(body)
           true
