@@ -3,19 +3,15 @@ module Fog
     class Google
       class Mock
         def get_firewall(_firewall_name)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def get_firewall(firewall_name)
-          api_method = @compute.firewalls.get
-          parameters = {
-            "project" => @project,
-            "firewall" => firewall_name
-          }
-
-          request(api_method, parameters)
+          @compute.get_firewall(@project, firewall_name)
         end
       end
     end

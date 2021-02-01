@@ -2,11 +2,13 @@ module Fog
   module Compute
     class Google
       ##
-      # Represents a Subnetwork resource
+      # Represents a SslCertificate resource
       #
       # @see https://cloud.google.com/compute/docs/reference/latest/sslCertificates
       class SslCertificate < Fog::Model
         identity :name
+
+        attribute :kind
         attribute :id
         attribute :creation_timestamp, :aliases => "creationTimestamp"
         attribute :description
@@ -16,16 +18,21 @@ module Fog
 
         def save
           requires :identity, :certificate, :private_key
-          data = service.insert_ssl_certificate(identity, certificate, private_key, attributes)
-          operation = Fog::Compute::Google::Operations.new(:service => service).get(data.body["name"], nil)
-          operation.wait_for { !pending? }
+          data = service.insert_ssl_certificate(
+            identity, certificate, private_key,
+            :description => description
+          )
+          operation = Fog::Compute::Google::Operations.new(:service => service)
+                                                      .get(data.name)
+          operation.wait_for { ready? }
           reload
         end
 
         def destroy(async = true)
           requires :identity
           data = service.delete_ssl_certificate(identity)
-          operation = Fog::Compute::Google::Operations.new(:service => service).get(data.body["name"], nil)
+          operation = Fog::Compute::Google::Operations.new(:service => service)
+                                                      .get(data.name)
           operation.wait_for { ready? } unless async
           operation
         end

@@ -33,6 +33,10 @@ module Fog
           service.delete_instance_group(name, zone_name)
         end
 
+        def add_instance(instance_id)
+          add_instances [instance_id]
+        end
+
         def add_instances(instances)
           requires :identity, :zone
 
@@ -53,10 +57,10 @@ module Fog
           requires :identity, :zone
 
           instance_list = []
-          data = service.list_instance_group_instances(identity, zone_name).body
-          if data["items"]
-            data["items"].each do |instance|
-              instance_list << service.servers.get(instance["instance"].split("/")[-1], zone_name)
+          data = service.list_instance_group_instances(identity, zone_name)
+          if data.items
+            data.items.each do |instance|
+              instance_list << service.servers.get(instance.instance.split("/")[-1], zone_name)
             end
           end
           instance_list

@@ -17,27 +17,44 @@ module Fog
         attribute :source_snapshot, :aliases => "sourceSnapshot"
         attribute :source_snapshot_id, :aliases => "sourceSnapshotId"
         attribute :type
+        attribute :labels
+        attribute :label_fingerprint, :aliases => "labelFingerprint"
+        attribute :users
+
+        def default_description
+          if !source_image.nil?
+            "created from image: #{source_image}"
+          elsif !source_snapshot.nil?
+            "created from snapshot: #{source_snapshot}"
+          else
+            "created with fog"
+          end
+        end
 
         def save
           requires :name, :zone, :size_gb
 
-          options = {}
-          my_description = "Created with fog"
-          unless source_image.nil?
-            my_description = "Created from image: #{source_image}"
-          end
-          if source_image.nil? && !source_snapshot.nil?
-            options["sourceSnapshot"] = source_snapshot
-            my_description = "Created from snapshot: #{source_snapshot}"
+          options = {
+            :description => description || default_description,
+            :type => type,
+            :size_gb => size_gb,
+            :source_image => source_image,
+            :source_snapshot => source_snapshot,
+            :labels => labels
+          }.reject { |_, v| v.nil? }
+
+          if options[:source_image]
+            unless source_image.include?("projects/")
+              options[:source_image] = service.images.get(source_image).self_link
+            end
           end
 
-          options["sizeGb"] = size_gb
-          options["description"] = description || my_description
-          options["type"] = type
-
-          data = service.insert_disk(name, zone, source_image, options)
-          operation = Fog::Compute::Google::Operations.new(:service => service).get(data.body["name"], data.body["zone"])
-          operation.wait_for { !pending? }
+          # Request needs backward compatibility so source image is specified in
+          # method arguments
+          data = service.insert_disk(name, zone, options[:source_image], options)
+          operation = Fog::Compute::Google::Operations.new(:service => service)
+                                                      .get(data.name, data.zone)
+          operation.wait_for { ready? }
           reload
         end
 
@@ -45,7 +62,8 @@ module Fog
           requires :name, :zone
 
           data = service.delete_disk(name, zone_name)
-          operation = Fog::Compute::Google::Operations.new(:service => service).get(data.body["name"], data.body["zone"])
+          operation = Fog::Compute::Google::Operations.new(:service => service)
+                                                      .get(data.name, data.zone)
           operation.wait_for { ready? } unless async
           operation
         end
@@ -54,23 +72,51 @@ module Fog
           zone.nil? ? nil : zone.split("/")[-1]
         end
 
-        # auto_delete can only be applied to disks created before instance creation.
-        # auto_delete = true will automatically delete disk upon instance termination.
-        def get_object(writable = true, boot = false, device_name = nil, auto_delete = false)
-          mode = writable ? "READ_WRITE" : "READ_ONLY"
-          value = {
-            "autoDelete" => auto_delete,
-            "boot" => boot,
-            "source" => self_link,
-            "mode" => mode,
-            "deviceName" => device_name,
-            "type" => "PERSISTENT"
-          }.select { |_k, v| !v.nil? }
-          Hash[value]
+        # Returns an attached disk configuration hash.
+        #
+        # Compute API needs attached disks to be specified in a custom format.
+        # This provides a handy shortcut for generating a preformatted config.
+        #
+        # Example output:
+        # {:auto_delete=>false,
+        #  :boot=>true,
+        #  :mode=>"READ_WRITE",
+        #  :source=>"https://www.googleapis.com/compute/v1/projects/myproj/zones/us-central1-f/disks/mydisk",
+        #  :type=>"PERSISTENT"}
+        #
+        # See Instances.insert API docs for more info:
+        # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
+        #
+        # @param [Hash]  opts  options to attach the disk with.
+        #   @option opts [Boolean]  :writable  The mode in which to attach this
+        #     disk. (defaults to READ_WRITE)
+        #   @option opts [Boolean]  :boot  Indicates whether this is a boot disk.
+        #     (defaults to false)
+        #   @option opts [String]  :device_name  Specifies a unique device name
+        #     of your choice that is reflected into the /dev/disk/by-id/google-*
+        #     tree of a Linux operating system running within the instance.
+        #   @option opts [Object]  :encryption_key  Encrypts or decrypts a disk
+        #     using a customer-supplied encryption key.
+        #   @option opts [Object]  :auto_delete  Specifies whether the disk will
+        #     be auto-deleted when the instance is deleted. (defaults to false)
+        #
+        # @return [Hash] Attached disk configuration hash
+        def attached_disk_obj(opts = {})
+          requires :self_link
+          collection.attached_disk_obj(self_link, opts)
         end
 
+        # A legacy shorthand for attached_disk_obj
+        #
+        # @param [Object]  writable  The mode in which to attach this disk.
+        #   (defaults to READ_WRITE)
+        # @param [Object]  auto_delete  Specifies whether the disk will be
+        #   auto-deleted when the instance is deleted. (defaults to false)
+        # @return [Hash]
         def get_as_boot_disk(writable = true, auto_delete = false)
-          get_object(writable, true, nil, auto_delete)
+          attached_disk_obj(boot: true,
+                            writable: writable,
+                            auto_delete: auto_delete)
         end
 
         def ready?
@@ -82,7 +128,7 @@ module Fog
 
           return unless data = begin
             collection.get(identity, zone_name)
-          rescue Excon::Errors::SocketError
+          rescue Google::Apis::TransmissionError
             nil
           end
 
@@ -91,25 +137,18 @@ module Fog
           self
         end
 
-        def create_snapshot(snapshot_name, snapshot_description = "")
+        def create_snapshot(snapshot_name, snapshot = {})
           requires :name, :zone
+          raise ArgumentError, "Invalid snapshot name" unless snapshot_name
 
-          if snapshot_name.nil? || snapshot_name.empty?
-            raise ArgumentError, "Invalid snapshot name"
-          end
-
-          options = {
-            "name"        => snapshot_name,
-            "description" => snapshot_description
-          }
-
-          data = service.insert_snapshot(name, zone_name, service.project, options)
-          operation = Fog::Compute::Google::Operations.new(:service => service).get(data.body["name"], data.body["zone"])
-          operation.wait_for { !pending? }
+          data = service.create_disk_snapshot(snapshot_name, name, zone_name, snapshot)
+          operation = Fog::Compute::Google::Operations.new(:service => service)
+                                                      .get(data.name, data.zone)
+          operation.wait_for { ready? }
           service.snapshots.get(snapshot_name)
         end
 
-        RUNNING_STATE = "READY"
+        RUNNING_STATE = "READY".freeze
       end
     end
   end

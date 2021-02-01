@@ -5,15 +5,17 @@ module Fog
         model Fog::Compute::Google::Route
 
         def all
-          data = service.list_routes.body
-          load(data["items"] || [])
+          data = service.list_routes.to_h
+          load(data[:items] || [])
         end
 
         def get(identity)
-          if route = service.get_route(identity).body
-            new(route)
+          if identity
+            route = service.get_route(identity).to_h
+            return new(route)
           end
-        rescue Fog::Errors::NotFound
+        rescue ::Google::Apis::ClientError => e
+          raise e unless e.status_code == 404
           nil
         end
       end

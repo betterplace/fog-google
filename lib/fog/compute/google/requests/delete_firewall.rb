@@ -3,19 +3,15 @@ module Fog
     class Google
       class Mock
         def delete_firewall(_firewall_name)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def delete_firewall(firewall_name)
-          api_method = @compute.firewalls.delete
-          parameters = {
-            "project" => @project,
-            "firewall" => firewall_name
-          }
-
-          request(api_method, parameters)
+          @compute.delete_firewall(@project, firewall_name)
         end
       end
     end

@@ -12,9 +12,13 @@ class TargetInstancesFactory < CollectionFactory
     @servers.cleanup
   end
 
+  def all
+    @subject.all(zone: TEST_ZONE)
+  end
+
   def params
     { :name => resource_name,
       :zone => TEST_ZONE,
-      :instance => @servers.create }
+      :instance => @servers.create.self_link }
   end
 end

@@ -3,20 +3,15 @@ module Fog
     class Google
       class Mock
         def get_instance_group(_group_name, _zone, _project = @project)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def get_instance_group(group_name, zone, project = @project)
-          api_method = @compute.instance_groups.get
-          parameters = {
-            "instanceGroup" => group_name,
-            "project" => project,
-            "zone" => zone
-          }
-
-          request(api_method, parameters)
+          @compute.get_instance_group(project, zone, group_name)
         end
       end
     end

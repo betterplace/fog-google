@@ -3,19 +3,15 @@ module Fog
     class Google
       class Mock
         def list_instance_groups(_zone)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def list_instance_groups(zone)
-          api_method = @compute.instance_groups.list
-          parameters = {
-            "project" => @project,
-            "zone" => zone
-          }
-
-          request(api_method, parameters)
+          @compute.list_instance_groups(@project, zone)
         end
       end
     end

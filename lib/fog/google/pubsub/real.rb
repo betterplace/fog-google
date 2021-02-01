@@ -12,7 +12,8 @@ module Fog
           options[:google_api_scope_url] = GOOGLE_PUBSUB_API_SCOPE_URLS.join(" ")
 
           @client = initialize_google_client(options)
-          @pubsub = @client.discovered_api("pubsub", api_version)
+          @pubsub = ::Google::Apis::PubsubV1::PubsubService.new
+          apply_client_options(@pubsub, options)
         end
       end
     end

@@ -2,33 +2,16 @@ module Fog
   module Compute
     class Google
       class Mock
-        def get_zone(zone_name)
-          zone = data[:zones][zone_name] || {
-            "error" => {
-              "errors" => [
-                {
-                  "domain" => "global",
-                  "reason" => "notFound",
-                  "message" => "The resource 'projects/#{project}/zones/#{zone_name}' was not found"
-                }
-              ],
-              "code" => 404,
-              "message" => "The resource 'projects/#{project}/zones/#{zone_name}' was not found"
-            }
-          }
-          build_excon_response(zone)
+        def get_zone(_zone_name)
+          # :no-coverage:
+          Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def get_zone(zone_name)
-          api_method = @compute.zones.get
-          parameters = {
-            "project" => @project,
-            "zone" => zone_name
-          }
-
-          request(api_method, parameters)
+          @compute.get_zone(@project, zone_name)
         end
       end
     end

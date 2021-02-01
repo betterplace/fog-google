@@ -1,3 +1,5 @@
+require "google-cloud-env"
+
 module Fog
   module Google
     module Shared
@@ -14,126 +16,85 @@ module Fog
         @project = project
         @api_version = api_version
         @api_url = base_url + api_version + "/projects/"
+        # google-cloud-env allows us to figure out which GCP runtime we're running in and query metadata
+        # e.g. whether we're running in GCE/GKE/AppEngine or what region the instance is running in
+        @google_cloud_env = ::Google::Cloud::Env.get
       end
 
       ##
       # Initializes the Google API Client
       #
       # @param [Hash] options Google API options
-      # @option options [String] :google_client_email A @developer.gserviceaccount.com email address to use
-      # @option options [String] :google_key_location The location of a pkcs12 key file
-      # @option options [String] :google_key_string The content of the pkcs12 key file
+      # @option options [Bool]   :google_application_default Explicitly use application default credentials
+      # @option options [Google::Auth|Signet] :google_auth Manually created authorization to use
       # @option options [String] :google_json_key_location The location of a JSON key file
       # @option options [String] :google_json_key_string The content of the JSON key file
       # @option options [String] :google_api_scope_url The access scope URLs
       # @option options [String] :app_name The app name to set in the user agent
       # @option options [String] :app_version The app version to set in the user agent
-      # @option options [Google::APIClient] :google_client Existing Google API Client
-      # @option options [Hash] :google_client_options A hash to send adition options to Google API Client
+      # @option options [Hash] :google_client_options A hash to send additional options to Google API Client
       # @return [Google::APIClient] Google API Client
       # @raises [ArgumentError] If there is any missing argument
       def initialize_google_client(options)
         # NOTE: loaded here to avoid requiring this as a core Fog dependency
         begin
-          require "google/api_client"
+          # TODO: google-api-client is in gemspec now, re-assess if this initialization logic is still needed
+          require "google/apis/monitoring_#{Fog::Google::Monitoring::GOOGLE_MONITORING_API_VERSION}"
+          require "google/apis/compute_#{Fog::Compute::Google::GOOGLE_COMPUTE_API_VERSION}"
+          require "google/apis/dns_#{Fog::DNS::Google::GOOGLE_DNS_API_VERSION}"
+          require "google/apis/pubsub_#{Fog::Google::Pubsub::GOOGLE_PUBSUB_API_VERSION}"
+          require "google/apis/sqladmin_#{Fog::Google::SQL::GOOGLE_SQL_API_VERSION}"
+          require "google/apis/storage_#{Fog::Storage::GoogleJSON::GOOGLE_STORAGE_JSON_API_VERSION}"
+          require "google/apis/iamcredentials_#{Fog::Storage::GoogleJSON::GOOGLE_STORAGE_JSON_IAM_API_VERSION}"
+          require "googleauth"
         rescue LoadError => error
-          Fog::Logger.warning("Please install the google-api-client gem before using this provider")
+          Fog::Errors::Error.new("Please install the google-api-client (>= 0.9) gem before using this provider")
           raise error
         end
 
-        # User can provide an existing Google API Client
-        client = options[:google_client]
-        return client unless client.nil?
+        validate_client_options(options)
 
-        # Create a signing key
-        signing_key = create_signing_key(options)
-
-        # Validate required arguments
-        unless options[:google_client_email]
-          raise ArgumentError.new("Missing required arguments: google_client_email")
+        application_name = "fog"
+        unless options[:app_name].nil?
+          application_name = "#{options[:app_name]}/#{options[:app_version] || '0.0.0'} fog"
         end
 
-        unless options[:google_api_scope_url]
-          raise ArgumentError.new("Missing required arguments: google_api_scope_url")
+        ::Google::Apis::ClientOptions.default.application_name = application_name
+        ::Google::Apis::ClientOptions.default.application_version = Fog::Google::VERSION
+
+        if ENV["DEBUG"]
+          ::Google::Apis.logger = ::Logger.new(::STDERR)
+          ::Google::Apis.logger.level = ::Logger::DEBUG
         end
 
-        # Create a new Google API Client
-        new_pk12_google_client(
-          options[:google_client_email],
-          signing_key,
-          options[:google_api_scope_url],
-          options[:app_name],
-          options[:app_version],
-          options[:google_client_options] || {}
-        )
-      end
+        auth = nil
 
-      ##
-      # Creates a Google signing key
-      #
-      def create_signing_key(options)
         if options[:google_json_key_location] || options[:google_json_key_string]
-          if options[:google_json_key_location]
-            json_key_location = File.expand_path(options[:google_json_key_location])
-            json_key = File.open(json_key_location, "r", &:read)
-          else
-            json_key = options[:google_json_key_string]
-          end
-
-          json_key_hash = Fog::JSON.decode(json_key)
-          unless json_key_hash.key?("client_email") || json_key_hash.key?("private_key")
-            raise ArgumentError.new("Invalid Google JSON key")
-          end
-
-          options[:google_client_email] = json_key_hash["client_email"]
-          ::Google::APIClient::KeyUtils.load_from_pem(json_key_hash["private_key"], "notasecret")
-        elsif options[:google_key_location] || options[:google_key_string]
-          google_key =
-            if options[:google_key_location]
-              File.expand_path(options[:google_key_location])
-            else
-              options[:google_key_string]
-            end
-
-          ::Google::APIClient::KeyUtils.load_from_pkcs12(google_key, "notasecret")
+          auth = process_key_auth(options)
+        elsif options[:google_auth]
+          auth = options[:google_auth]
+        elsif options[:google_application_default]
+          auth = process_application_default_auth(options)
         else
-          raise ArgumentError.new("Missing required arguments: google_key_location, google_key_string, " \
-                                  "google_json_key_location or google_json_key_string")
+          auth = process_fallback_auth(options)
         end
+
+        ::Google::Apis::RequestOptions.default.authorization = auth
+        auth
       end
 
       ##
-      # Create a Google API Client with a user email and a pkcs12 key
+      # Applies given options to the client instance
       #
-      # @param google_client_email [String] A @developer.gserviceaccount.com.
-      #   email address to use
-      # @param signing_key [OpenSSL::PKey] The private key for signing
-      # @param google_api_scope_url [String] Access scope URLs
-      # @param app_name [String] The app name to set in the user agent
-      # @param app_version [String] The app version to set in the user agent
-      # @param google_client_options [Hash] additional options to pass to the
-      #   underlying google client
-      # @return [Google::APIClient] a newly-constructed Google API Client
-      def new_pk12_google_client(google_client_email, signing_key, google_api_scope_url, app_name = nil, app_version = nil, google_client_options = {})
-        application_name = app_name.nil? ? "fog" : "#{app_name}/#{app_version || '0.0.0'} fog"
-        api_client_options = {
-          :application_name => application_name,
-          :application_version => Fog::Google::VERSION
-        }.merge(google_client_options)
-        client = ::Google::APIClient.new(api_client_options)
-
-        client.authorization = Signet::OAuth2::Client.new(
-          :audience => "https://accounts.google.com/o/oauth2/token",
-          :auth_provider_x509_cert_url => "https://www.googleapis.com/oauth2/v1/certs",
-          :client_x509_cert_url => "https://www.googleapis.com/robot/v1/metadata/x509/#{google_client_email}",
-          :issuer => google_client_email,
-          :scope => google_api_scope_url,
-          :signing_key => signing_key,
-          :token_credential_uri => "https://accounts.google.com/o/oauth2/token"
-        )
-        client.authorization.fetch_access_token!
-
-        client
+      # @param [Google::Apis::Core::BaseService] service API service client instance
+      # @param [Hash] google_client_options Service client options to apply
+      # @param [Hash] _ignored Rest of the options (for convenience, ignored)
+      # @return [void]
+      def apply_client_options(service, google_client_options: nil, **_ignored)
+        return if google_client_options.nil? || google_client_options.empty?
+        (service.client_options.members & google_client_options.keys).each do |option|
+          service.client_options[option] = google_client_options[option]
+        end
       end
 
       ##
@@ -190,6 +151,102 @@ module Fog
         end
 
         response
+      end
+
+      private
+
+      # Helper method to process application default authentication
+      #
+      # @param [Hash]  options - client options hash
+      # @return [Google::Auth::DefaultCredentials] - google auth object
+      def process_application_default_auth(options)
+        ::Google::Auth.get_application_default(options[:google_api_scope_url])
+      end
+
+      # Helper method to process fallback authentication
+      # Current fallback is application default authentication
+      #
+      # @param [Hash]  options - client options hash
+      # @return [Google::Auth::DefaultCredentials] - google auth object
+      def process_fallback_auth(options)
+        Fog::Logger.warning(
+          "Didn't detect any client auth settings, " \
+          "trying to fall back to application default credentials..."
+        )
+        begin
+          return process_application_default_auth(options)
+        rescue
+          raise Fog::Errors::Error.new(
+            "Fallback auth failed, could not configure authentication for Fog client.\n" \
+              "Check your auth options, must be one of:\n" \
+              "- :google_json_key_location,\n" \
+              "- :google_json_key_string,\n" \
+              "- :google_auth,\n" \
+              "- :google_application_default,\n" \
+              "If credentials are valid - please, file a bug to fog-google." \
+          )
+        end
+      end
+
+      # Helper method to process key authentication
+      #
+      # @param [Hash]  options - client options hash
+      # @return [Google::Auth::ServiceAccountCredentials] - google auth object
+      def process_key_auth(options)
+        if options[:google_json_key_location]
+          json_key = File.read(File.expand_path(options[:google_json_key_location]))
+        elsif options[:google_json_key_string]
+          json_key = options[:google_json_key_string]
+        end
+
+        validate_json_credentials(json_key)
+
+        ::Google::Auth::ServiceAccountCredentials.make_creds(
+          :json_key_io => StringIO.new(json_key),
+          :scope => options[:google_api_scope_url]
+        )
+      end
+
+      # Helper method to sort out deprecated and missing auth options
+      #
+      # @param [Hash]  options - client options hash
+      def validate_client_options(options)
+        # Users can no longer provide their own clients due to rewrite of auth
+        # in https://github.com/google/google-api-ruby-client/ version 0.9.
+        if options[:google_client]
+          raise ArgumentError.new("Deprecated argument no longer works: google_client")
+        end
+
+        # They can also no longer use pkcs12 files, because Google's new auth
+        # library doesn't support them either.
+        if options[:google_key_location]
+          raise ArgumentError.new("Deprecated auth method no longer works: google_key_location")
+        end
+        if options[:google_key_string]
+          raise ArgumentError.new("Deprecated auth method no longer works: google_key_string")
+        end
+
+        # Google client email option is no longer needed
+        if options[:google_client_email]
+          Fog::Logger.deprecation("Argument no longer needed for auth: google_client_email")
+        end
+
+        # Validate required arguments
+        unless options[:google_api_scope_url]
+          raise ArgumentError.new("Missing required arguments: google_api_scope_url")
+        end
+      end
+
+      # Helper method to checks whether the necessary fields are present in
+      # JSON key credentials
+      #
+      # @param [String]  json_key - Google json auth key string
+      def validate_json_credentials(json_key)
+        json_key_hash = Fog::JSON.decode(json_key)
+
+        unless json_key_hash.key?("client_email") || json_key_hash.key?("private_key")
+          raise ArgumentError.new("Invalid Google JSON key")
+        end
       end
     end
   end

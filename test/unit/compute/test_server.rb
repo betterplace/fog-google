@@ -1,20 +1,29 @@
 require "helpers/test_helper"
-require File.expand_path("../../../../lib/fog/compute/google/models/server", __FILE__)
 
 class UnitTestServer < MiniTest::Test
-  def test_metadata_uses_deprecated_sshKeys_if_exists
-    server = Fog::Compute::Google::Server.new(:metadata => { "sshKeys" => "existing_user:existing_key" })
-    server.add_ssh_key("my_username", "my_key")
-
-    assert_match(/my_username/, server.metadata["sshKeys"])
-    assert_match(/my_key/, server.metadata["sshKeys"])
+  def setup
+    Fog.mock!
+    @client = Fog::Compute.new(provider: "google",
+                               google_project: "foo")
   end
 
-  def test_add_ssh_key_uses_ssh_keys_by_default
-    server = Fog::Compute::Google::Server.new
-    server.add_ssh_key("my_username", "my_key")
+  def teardown
+    Fog.unmock!
+  end
 
-    assert_match(/my_username/, server.metadata["ssh-keys"])
-    assert_match(/my_key/, server.metadata["ssh-keys"])
+  def test_if_server_accepts_ssh_keys
+    key = "ssh-rsa IAMNOTAREALSSHKEYAMA== user@host.subdomain.example.com"
+
+    File.stub :read, key do
+      server = Fog::Compute::Google::Server.new(
+        :name => "foo",
+        :machine_type => "bar",
+        :disks => ["baz"],
+        :zone => "foo",
+        :public_key_path => key
+      )
+      assert_equal(server.public_key, key,
+                   "Fog::Compute::Google::Server loads public_key properly")
+    end
   end
 end

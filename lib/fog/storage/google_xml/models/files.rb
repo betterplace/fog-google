@@ -59,21 +59,21 @@ module Fog
           data.headers.each do |k, v|
             file_data[k] = v
           end
-          file_data.merge!(:body => data.body,
-                           :key  => key)
+          file_data[:body] = data.body
+          file_data[:key] = key
           new(file_data)
         rescue Excon::Errors::NotFound
           nil
         end
 
-        def get_http_url(key, expires)
+        def get_http_url(key, expires, options = {})
           requires :directory
-          service.get_object_http_url(directory.key, key, expires)
+          service.get_object_http_url(directory.key, key, expires, options)
         end
 
-        def get_https_url(key, expires)
+        def get_https_url(key, expires, options = {})
           requires :directory
-          service.get_object_https_url(directory.key, key, expires)
+          service.get_object_https_url(directory.key, key, expires, options)
         end
 
         def head(key, options = {})

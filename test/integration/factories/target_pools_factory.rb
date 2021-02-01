@@ -15,10 +15,14 @@ class TargetPoolsFactory < CollectionFactory
     @http_health_checks.cleanup
   end
 
+  def all
+    @subject.all(region: TEST_REGION)
+  end
+
   def params
     { :name => resource_name,
       :region => TEST_REGION,
-      :instances => [@servers.create.self_link],
-      :healthChecks => [@http_health_checks.create.self_link] }
+      :instances => [@servers.create.self_link, @servers.create.self_link],
+      :health_checks => [@http_health_checks.create.self_link] }
   end
 end

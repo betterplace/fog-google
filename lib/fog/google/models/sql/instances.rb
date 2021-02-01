@@ -12,7 +12,7 @@ module Fog
         #
         # @return [Array<Fog::Google::SQL::Instance>] List of instance resources
         def all
-          data = service.list_instances.body["items"] || []
+          data = service.list_instances.to_h[:items] || []
           load(data)
         end
 
@@ -22,16 +22,16 @@ module Fog
         # @param [String] instance_id Instance ID
         # @return [Fog::Google::SQL::Instance] Instance resource
         def get(instance_id)
-          if instance = service.get_instance(instance_id).body
+          instance = service.get_instance(instance_id).to_h
+          # XXX if we pass `nil` to get() it returns empty DB object with
+          # kind set to "sql#instancesList"
+          # see https://github.com/google/google-api-ruby-client/issues/699
+          if instance[:kind].eql?("sql#instance")
             new(instance)
           end
-        rescue Fog::Errors::NotFound
+        rescue ::Google::Apis::ClientError => e
+          raise e unless e.status_code == 404 || e.status_code == 403
           nil
-        rescue Fog::Errors::Error => e
-          # Google SQL returns a 403 if we try to access a non-existing resource
-          # The default behaviour in Fog is to return a nil
-          return nil if e.message == "The client is not authorized to make this request."
-          raise e
         end
       end
     end

@@ -8,8 +8,9 @@ module Fog
       recognizes(
         :app_name,
         :app_version,
+        :google_application_default,
+        :google_auth,
         :google_client,
-        :google_client_email,
         :google_client_options,
         :google_json_key_location,
         :google_json_key_string,

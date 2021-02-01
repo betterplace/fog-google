@@ -3,21 +3,16 @@ module Fog
     class Google
       class Mock
         def delete_global_operation(_operation)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
-        # https://developers.google.com/compute/docs/reference/latest/globalOperations
-
+        # @see https://developers.google.com/compute/docs/reference/latest/globalOperations/delete
         def delete_global_operation(operation)
-          api_method = @compute.global_operations.delete
-          parameters = {
-            "project" => @project,
-            "operation" => operation
-          }
-
-          request(api_method, parameters)
+          @compute.delete_global_operation(@project, operation)
         end
       end
     end

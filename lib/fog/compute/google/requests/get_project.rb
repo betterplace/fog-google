@@ -3,18 +3,15 @@ module Fog
     class Google
       class Mock
         def get_project(_identity)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def get_project(identity)
-          api_method = @compute.projects.get
-          parameters = {
-            :project => identity
-          }
-
-          request(api_method, parameters)
+          @compute.get_project(identity)
         end
       end
     end

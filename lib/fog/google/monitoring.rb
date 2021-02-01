@@ -8,8 +8,9 @@ module Fog
       recognizes(
         :app_name,
         :app_version,
+        :google_application_default,
+        :google_auth,
         :google_client,
-        :google_client_email,
         :google_client_options,
         :google_key_location,
         :google_key_string,
@@ -43,12 +44,17 @@ module Fog
 
       # Timeseries
       request :list_timeseries
+      request :create_timeseries
 
       # MetricDescriptors
+      request :get_metric_descriptor
       request :list_metric_descriptors
+      request :create_metric_descriptor
+      request :delete_metric_descriptor
 
       # MonitoredResourceDescriptors
       request :list_monitored_resource_descriptors
+      request :get_monitored_resource_descriptor
     end
   end
 end

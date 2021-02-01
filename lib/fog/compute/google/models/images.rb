@@ -8,73 +8,84 @@ module Fog
         # charged a license fee beyond the base Google Compute Engine VM
         # charges. See https://cloud.google.com/compute/docs/operating-systems/
         # for more info.
-        GLOBAL_PROJECTS = [
-          "centos-cloud",
-          "coreos-cloud",
-          "debian-cloud",
-          "google-containers",
-          "opensuse-cloud",
-          "rhel-cloud",
-          "suse-cloud",
-          "ubuntu-os-cloud",
-          "windows-cloud"
-        ]
+        GLOBAL_PROJECTS = %w(
+          centos-cloud
+          cos-cloud
+          coreos-cloud
+          debian-cloud
+          rhel-cloud
+          rhel-sap-cloud
+          suse-cloud
+          suse-sap-cloud
+          ubuntu-os-cloud
+          windows-cloud
+          windows-sql-cloud
+          opensuse-cloud
+        ).freeze
 
         def all
-          data = []
-
-          all_projects.each do |project|
+          data = all_projects.map do |project|
             begin
-              images = service.list_images(project).body["items"] || []
-
+              images = service.list_images(project).items || []
               # Keep track of the project in which we found the image(s)
-              images.each { |img| img[:project] = project }
-              data += images
-            rescue Fog::Errors::NotFound
+              images.map { |img| img.to_h.merge(:project => project) }
+            rescue ::Google::Apis::ClientError => e
+              raise e unless e.status_code == 404
               # Not everyone has access to every Global Project. Requests
               # return 404 if you don't have access.
               next
             end
           end
+          data = data.flatten
 
           load(data)
         end
 
         # Only return the non-deprecated list of images
         def current
-          data = []
-          all_images = all
-          all_images.each { |img| data.push(img) unless img.deprecated }
-          data
+          all.reject(&:deprecated)
         end
 
-        def get(identity)
-          data = nil
-
-          all_projects.each do |project|
+        def get(identity, project = nil)
+          if project
             begin
-              data = service.get_image(identity, project).body
-              data[:project] = project
-            rescue Fog::Errors::NotFound
-              next
-            else
-              break
+              image = service.get_image(identity, project).to_h
+              # TODO: Remove response modification - see #405
+              image[:project] = project
+              return new(image)
+            rescue ::Google::Apis::ClientError => e
+              raise e unless e.status_code == 404
+              nil
             end
+          elsif identity
+            projects = all_projects
+            projects.each do |proj|
+              begin
+                response = service.get_image(identity, proj).to_h
+                # TODO: Remove response modification - see #405
+                response[:project] = proj
+                image = response
+                return new(image)
+              rescue ::Google::Apis::ClientError => e
+                next if e.status_code == 404
+                break
+              end
+            end
+            # If nothing is found - return nil
+            nil
           end
-          return nil if data.nil?
-          new(data)
         end
 
-        def get_from_family(family)
+        def get_from_family(family, project = nil)
+          project.nil? ? projects = all_projects : projects = [project]
           data = nil
-          
-          all_projects.each do |project|
+
+          projects.each do |proj|
             begin
-              data = service.get_image_from_family(family, project).body
-              data[:project] = project
-            rescue Fog::Errors::NotFound
-              next
-            else
+              data = service.get_image_from_family(family, proj).to_h
+              data[:project] = proj
+            rescue ::Google::Apis::ClientError => e
+              next if e.status_code == 404
               break
             end
           end
@@ -86,7 +97,11 @@ module Fog
 
         def all_projects
           # Search own project before global projects
-          [service.project] + GLOBAL_PROJECTS + service.extra_global_projects
+          project_list = [service.project] + GLOBAL_PROJECTS + service.extra_global_projects
+          unless service.exclude_projects.empty?
+            project_list.delete_if { |project| service.exclude_projects.include?(project) }
+          end
+          project_list
         end
       end
     end

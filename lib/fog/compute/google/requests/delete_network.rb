@@ -3,19 +3,15 @@ module Fog
     class Google
       class Mock
         def delete_network(_network_name)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def delete_network(network_name)
-          api_method = @compute.networks.delete
-          parameters = {
-            "project" => @project,
-            "network" => network_name
-          }
-
-          request(api_method, parameters)
+          @compute.delete_network(@project, network_name)
         end
       end
     end

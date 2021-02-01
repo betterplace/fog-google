@@ -8,13 +8,22 @@ class ServersFactory < CollectionFactory
   end
 
   def cleanup
-    super
+    # Disk cleanup sometimes fails if server deletion has not been completed
+    super(false)
     @disks.cleanup
+  end
+
+  def get(identity)
+    @subject.get(identity, TEST_ZONE)
+  end
+
+  def all
+    @subject.all(zone: TEST_ZONE)
   end
 
   def params
     { :name => resource_name,
-      :zone_name => TEST_ZONE,
+      :zone => TEST_ZONE,
       :machine_type => TEST_MACHINE_TYPE,
       :disks => [@disks.create] }
   end

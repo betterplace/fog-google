@@ -3,20 +3,21 @@ module Fog
     class Google
       class Mock
         def insert_global_address(_address_name, _options = {})
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
-        def insert_global_address(address_name, options = {})
-          api_method = @compute.global_addresses.insert
-          parameters = {
-            "project" => @project
-          }
-          body_object = { "name" => address_name }
-          body_object["description"] = options[:description] if options[:description]
+        INSERTABLE_ADDRESS_FIELDS = %i{description ip_version}.freeze
 
-          request(api_method, parameters, body_object)
+        def insert_global_address(address_name, options = {})
+          opts = options.select { |k, _| INSERTABLE_ADDRESS_FIELDS.include? k }
+                        .merge(:name => address_name)
+          @compute.insert_global_address(
+            @project, ::Google::Apis::ComputeV1::Address.new(opts)
+          )
         end
       end
     end

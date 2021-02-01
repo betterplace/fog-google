@@ -3,18 +3,15 @@ module Fog
     class Google
       class Mock
         def get_global_address(_address_name)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
       class Real
         def get_global_address(address_name)
-          api_method = @compute.global_addresses.get
-          parameters = {
-            "project" => @project,
-            "address" => address_name
-          }
-          request(api_method, parameters)
+          @compute.get_global_address(@project, address_name)
         end
       end
     end

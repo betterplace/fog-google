@@ -17,26 +17,15 @@ module Fog
         attribute :owner,               :aliases => "Owner"
         attribute :storage_class,       :aliases => ["x-goog-storage-class", "StorageClass"]
 
-        # https://cloud.google.com/storage/docs/access-control#predefined-acl
-        VALID_ACLS = [
-          "authenticated-read",
-          "bucket-owner-full-control",
-          "bucket-owner-read",
-          "private",
-          "project-private",
-          "public-read",
-          "public-read-write"
-        ].freeze
-
         def acl=(new_acl)
-          unless VALID_ACLS.include?(new_acl)
-            raise ArgumentError.new("acl must be one of [#{VALID_ACLS.join(', ')}]")
+          unless Utils::VALID_ACLS.include?(new_acl)
+            raise ArgumentError.new("acl must be one of [#{Utils::VALID_ACLS.join(', ')}]")
           end
           @acl = new_acl
         end
 
         def body
-          attributes[:body] ||= last_modified && (file = collection.get(identity)) ? file.body : ""
+          last_modified && (file = collection.get(identity)) ? attributes[:body] ||= file.body : attributes[:body] ||= ""
         end
 
         def body=(new_body)
@@ -62,7 +51,7 @@ module Fog
 
         remove_method :metadata
         def metadata
-          attributes.reject { |key, _value| !(key.to_s =~ /^x-goog-meta-/) }
+          attributes.select { |key, _value| key.to_s =~ /^x-goog-meta-/ }
         end
 
         remove_method :metadata=
@@ -127,9 +116,9 @@ module Fog
           true
         end
 
-        def url(expires)
+        def url(expires, options = {})
           requires :key
-          collection.get_http_url(key, expires)
+          collection.get_http_url(key, expires, options)
         end
 
         private

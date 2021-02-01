@@ -3,7 +3,9 @@ module Fog
     class GoogleXML
       class Mock
         def put_bucket_acl(_bucket_name, _acl)
+          # :no-coverage:
           Fog::Mock.not_implemented
+          # :no-coverage:
         end
       end
 
@@ -40,7 +42,7 @@ DATA
             "<Scope type='#{scope['type']}'/>"
           else
             "<Scope type='#{scope['type']}'>" +
-              scope.to_a.select { |pair| pair[0] != "type" }.map { |pair| tag(pair[0], pair[1]) }.join("\n") +
+              scope.to_a.reject { |pair| pair[0] == "type" }.map { |pair| tag(pair[0], pair[1]) }.join("\n") +
               "</Scope>"
           end
         end
